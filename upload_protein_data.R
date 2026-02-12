@@ -97,8 +97,67 @@ for (i in seq_len(nrow(yeast_gene_df))) {
       ")"
     )
     
-    dbExecute(con, sql)
+    dbExecute(con_1, sql)
   })
+}
+
+
+# ------------------------------------------------------------------
+#
+# Add number of interactions in database and number of drug screens
+#
+# ------------------------------------------------------------------
+
+sql<-paste(c("SELECT * FROM `protein`",";"),collapse='')
+query_obj<-dbSendQuery(con_1, sql)
+protein_df<-fetch(query_obj, n = -1)
+
+sql<-paste(c("SELECT * FROM `interaction`",";"),collapse='')
+query_obj<-dbSendQuery(con_1, sql)
+interaction_df<-fetch(query_obj, n = -1)
+
+for(i in 1:nrow(protein_df)){
+  
+  print(i)
+  protein<-protein_df[i,]
+  id<-protein$id
+  ensembl_id<-protein$ensembl_id
+  
+  sub<-interaction_df[(interaction_df$interactor_A_id == ensembl_id | interaction_df$interactor_B_id == ensembl_id) | (interaction_df$interactor_A_id == ensembl_id & interaction_df$interactor_B_id == ensembl_id),]
+  
+  n_interactions<-nrow(sub)
+  
+  sql<-paste(c("UPDATE `protein` SET `number_of_interactions_in_database` = '", n_interactions,"' WHERE `id` = '", id, "';"),collapse='')
+  dbSendQuery(con_1, sql)
+  
+}
+
+sql<-paste(c("SELECT * FROM `gene_target_prediction`",";"),collapse='')
+query_obj<-dbSendQuery(con_2, sql)
+gene_target_prediction_df<-fetch(query_obj, n = -1)
+
+for(i in 1:nrow(protein_df)){
+  
+  print(i)
+  protein<-protein_df[i,]
+  
+  try({
+    
+    id<-protein$id
+    ensembl_id<-protein$ensembl_id
+    
+    rows <- gene_target_prediction_df[ gene_target_prediction_df$reference == ensembl_id,]
+    row_1 <- rows[rows$dotcos_score > 0,]
+    row_2 <- rows[rows$dotcos_score < 0,]
+
+    sql<-paste(c("UPDATE `protein` SET `num_drug_screen_positive` = '", nrow(row_1),"' WHERE `id` = '", id, "';"),collapse='')
+    dbSendQuery(con_1, sql)
+    
+    sql<-paste(c("UPDATE `protein` SET `num_drug_screen_negative` = '", nrow(row_2),"' WHERE `id` = '", id, "';"),collapse='')
+    dbSendQuery(con_1, sql)
+    
+  })
+  
 }
 
 

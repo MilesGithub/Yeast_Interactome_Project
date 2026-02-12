@@ -32,7 +32,17 @@ for(i in 1:nrow(ValBin)){
   })
 }
 
-#add join tables to datasets and categories
+
+sql<-paste(c("SELECT * FROM `interaction`",";"),collapse='')
+query_obj<-dbSendQuery(con_1, sql)
+interaction_df<-fetch(query_obj, n = -1)
+
+
+# --------------------------------------------------
+#
+# Add join tables to datasets and categories
+#
+# --------------------------------------------------
 
 for (i in seq_len(nrow(ValBin))) {
   
@@ -181,3 +191,54 @@ for (i in seq_len(nrow(ValBin))) {
     
   })
 }
+
+# ------------------------------------------------------------------
+#
+# Add number of interactions in database and number of drug screens
+#
+# ------------------------------------------------------------------
+
+sql<-paste(c("SELECT * FROM `interaction_genetic_interaction_df`",";"),collapse='')
+query_obj<-dbSendQuery(con_1, sql)
+interaction_genetic_interaction_df<-fetch(query_obj, n = -1)
+
+for (i in seq_len(nrow(interaction_df))) {
+  
+  print(i)
+  
+  interaction_row <- interaction_df[i, ]
+  interaction_id  <- interaction_row$id
+  
+  # Link table: interaction → genetic interaction
+  interaction_genetic_links <- interaction_genetic_interaction_df[
+    interaction_genetic_interaction_df$interaction_id == interaction_id,
+  ]
+  
+  # Retrieve associated genetic interactions
+  genetic_interactions <- genetic_interaction_df[
+    genetic_interaction_df$id %in% interaction_genetic_links$genetic_interaction_id,
+  ]
+  
+  # Order by smallest p-value
+  genetic_interactions <- genetic_interactions[
+    order(genetic_interactions$p_value),
+  ]
+  
+  if (nrow(genetic_interactions) > 0) {
+    
+    best_genetic_interaction <- genetic_interactions[1, ]
+    
+    best_p_value  <- best_genetic_interaction$p_value
+    best_gi_score <- best_genetic_interaction$genetic_interaction_score
+    
+    update_query <- paste0(
+      "UPDATE interaction SET ",
+      "genetic_interaction_score = ", best_gi_score, ", ",
+      "genetic_interaction_p_value = ", best_p_value,
+      " WHERE id = ", interaction_id
+    )
+    
+    dbExecute(con_1, update_query)
+  }
+}
+
